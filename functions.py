@@ -175,6 +175,139 @@ def obtener_h2h(local, visitante):
         logger.warning(f"⚠️ H2H: {e}")
         return None
 
+def obtener_resultado_final(local, visitante, fecha_str):
+    """Obtiene resultado FINAL del partido una vez terminado"""
+    if not config.RAPIDAPI_KEY:
+        return None
+    
+    try:
+        # Convertir fecha a formato correcto
+        try:
+            fecha_obj = datetime.fromisoformat(fecha_str.replace("Z", "+00:00"))
+        except:
+            return None
+        
+        fecha_date = fecha_obj.strftime("%Y-%m-%d")
+        
+        # Buscar fixture por equipos y fecha
+        r = requests.get(
+            f"https://{config.RAPIDAPI_HOST}/v3/fixtures",
+            headers={
+                "x-rapidapi-key": config.RAPIDAPI_KEY,
+                "x-rapidapi-host": config.RAPIDAPI_HOST
+            },
+            params={
+                "date": fecha_date,
+                "status": "FT"  # FT = Final Time (Tiempo Final)
+            },
+            timeout=10
+        )
+        
+        if not r.ok:
+            return None
+        
+        data = r.json()
+        if not data.get("response"):
+            return None
+        
+        # Buscar el partido exacto
+        for fixture in data["response"]:
+            home = fixture.get("teams", {}).get("home", {}).get("name", "").lower()
+            away = fixture.get("teams", {}).get("away", {}).get("name", "").lower()
+            
+            if local.lower() in home and visitante.lower() in away:
+                goals_home = fixture.get("goals", {}).get("home")
+                goals_away = fixture.get("goals", {}).get("away")
+                
+                if goals_home is not None and goals_away is not None:
+                    total_goles = goals_home + goals_away
+                    
+                    return {
+                        "resultado": f"{goals_home}-{goals_away}",
+                        "goles_local": goals_home,
+                        "goles_visitante": goals_away,
+                        "total_goles": total_goles,
+                        "status": "FT"
+                    }
+        
+        return None
+    
+    except Exception as e:
+        logger.warning(f"⚠️ obtener_resultado_final: {e}")
+        return None
+
+def actualizar_alerta_con_resultado(historial, alert_id, resultado_dict):
+    """Actualiza alerta con resultado final y calcula W/L"""
+    try:
+        for alerta in historial.get("alertas", []):
+            if alerta.get("id") == alert_id and alerta.get("estado") == "pendiente":
+                
+                tipo = alerta.get("tipo", "")
+                threshold = alerta.get("threshold", 3.5)
+                goles_totales = resultado_dict.get("total_goles", 0)
+                cuota = alerta.get("cuota", 0)
+                apuesta = alerta.get("apuesta_cop", 0)
+                
+                # Determinar si ganó o perdió
+                if "under35" in tipo:
+                    # Under 3.5: gana si MENOS de 4 goles
+                    gano = goles_totales < 4
+                elif "over25" in tipo:
+                    # Over 2.5: gana si 3 O MÁS goles
+                    gano = goles_totales >= 3
+                else:
+                    return False
+                
+                # Actualizar alerta
+                alerta["resultado"] = resultado_dict.get("resultado", "")
+                alerta["estado"] = "ganada" if gano else "perdida"
+                
+                if gano:
+                    alerta["ganancia_real"] = round(apuesta * (cuota - 1))
+                else:
+                    alerta["ganancia_real"] = -apuesta
+                
+                logger.info(f"✅ Alerta actualizada: {alerta['local']} vs {alerta['visitante']} | {resultado_dict.get('resultado')} | {'GANADA' if gano else 'PERDIDA'}")
+                return True
+        
+        return False
+    
+    except Exception as e:
+        logger.error(f"❌ actualizar_alerta_con_resultado: {e}")
+        return False
+
+def buscar_y_actualizar_resultados(historial):
+    """Busca resultados de alertas pendientes y las actualiza"""
+    try:
+        actualizadas = 0
+        
+        for alerta in historial.get("alertas", []):
+            # Solo procesa alertas pendientes
+            if alerta.get("estado") != "pendiente":
+                continue
+            
+            local = alerta.get("local", "")
+            visitante = alerta.get("visitante", "")
+            fecha = alerta.get("commence_time", "")
+            
+            # Obtener resultado
+            resultado = obtener_resultado_final(local, visitante, fecha)
+            
+            if resultado:
+                # Actualizar alerta
+                if actualizar_alerta_con_resultado(historial, alerta.get("id"), resultado):
+                    actualizadas += 1
+                    time.sleep(0.5)  # Rate limit
+        
+        if actualizadas > 0:
+            logger.info(f"📊 {actualizadas} alerta(s) actualizada(s) con resultado(s)")
+        
+        return actualizadas
+    
+    except Exception as e:
+        logger.error(f"❌ buscar_y_actualizar_resultados: {e}")
+        return 0
+        
 # ─── PARSEO DE PARTIDOS ──────────────���─────────────────────
 def es_hoy_y_futuro(commence_time_str):
     """Valida que el partido sea hoy y en el futuro"""
