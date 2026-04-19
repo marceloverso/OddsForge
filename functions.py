@@ -600,6 +600,15 @@ def sincronizar_google_sheets(historial):
         
         # Obtener o crear hoja
         try:
+            # Obtener mes actual (Abril, Mayo, etc.)
+            mes_actual = hora_colombia().strftime("%B")  # "April", "May", etc.
+            mes_español = {
+                "January": "Enero", "February": "Febrero", "March": "Marzo",
+                "April": "Abril", "May": "Mayo", "June": "Junio",
+                "July": "Julio", "August": "Agosto", "September": "Septiembre",
+                "October": "Octubre", "November": "Noviembre", "December": "Diciembre"
+            }
+            nombre_hoja = mes_español.get(mes_actual, mes_actual)
             ws = sh.worksheet("OddsForge")
             logger.info("✅ Hoja OddsForge encontrada")
         except:
