@@ -9,7 +9,7 @@ from functions import (
     es_hoy_y_futuro, hora_local_col, nombre_liga, obtener_h2h,
     enviar_telegram, formatear_alerta, registrar_alerta,
     cargar_historial, guardar_historial, sincronizar_google_sheets,
-    calcular_stats, formatear_stats, analisis_claude_ai, SESION, buscar_y_actualizar_resultados
+    calcular_stats, formatear_stats, analisis_claude_ai, SESION, buscar_y_actualizar_resultados, build_alert_id
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -113,8 +113,8 @@ def main():
                 under_ok = (score_u35 >= config.SCORE_MINIMO and value_u35 > config.VALUE_BETTING_MIN)
                 
                 if under_ok:
-                    under_id = config.build_alert_id("under35", local, visitante, sport_key, 
-                                                      partido.get("commence_time", ""))
+                    under_id = build_alert_id("under35", local, visitante, sport_key, 
+                          partido.get("commence_time", ""))
                     
                     if under_id not in existing_ids:
                         msg = formatear_alerta(
@@ -177,7 +177,7 @@ def main():
                 over_ok = (score_o25 >= config.SCORE_MINIMO and value_o25 > config.VALUE_BETTING_MIN)
                 
                 if over_ok:
-                    over_id = config.build_alert_id("over25", local, visitante, sport_key,
+                    over_id = build_alert_id("over25", local, visitante, sport_key,
                                                      partido.get("commence_time", ""))
                     
                     if over_id not in existing_ids:
