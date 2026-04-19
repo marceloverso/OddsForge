@@ -241,11 +241,17 @@ def main():
             if stats:
                 msg += formatear_stats(stats)
         else:
+            # Contar ligas únicas
+            ligas_unicas = set()
+            for alerta in historial.get("alertas", []):
+                if alerta.get("fecha") == hora_colombia().strftime("%Y-%m-%d"):
+                ligas_unicas.add(alerta.get("liga", ""))
+
             msg = (
                 f"✅ <b>ODDSFORGE</b>\n\n"
                 f"📅 {ahora} (Col)\n"
                 f"🎯 {alertas_enviadas} alerta(s) enviada(s)\n"
-                f"📊 {partidos_analizados} partidos analizados\n\n"
+                f"📊 {partidos_analizados} partidos analizados de {len(ligas_unicas)} liga(s)\n\n"
             )
             if stats:
                 msg += formatear_stats(stats)
