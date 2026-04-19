@@ -139,42 +139,56 @@ def extraer_cuotas(partido, thresholds=[2.5, 3.5]):
         return None
 
 def obtener_h2h(local, visitante):
-    """Obtiene H2H (últimos enfrentamientos) con RapidAPI"""
+    """Obtiene H2H - intenta múltiples endpoints"""
     if not config.RAPIDAPI_KEY:
         return None
     
     try:
+        # Intento 1: headtohead normal
         r = requests.get(
             f"https://{config.RAPIDAPI_HOST}/v3/fixtures/headtohead",
             headers={
                 "x-rapidapi-key": config.RAPIDAPI_KEY,
                 "x-rapidapi-host": config.RAPIDAPI_HOST
             },
+            params={"h2h": f"{local}-{visitante}", "status": "FT"},
+            timeout=10
+        )
+        
+        if r.ok and r.json().get("response"):
+            ultimo = r.json()["response"][0]
+            return {
+                "goles_local": ultimo.get("goals", {}).get("home", "?"),
+                "goles_visitante": ultimo.get("goals", {}).get("away", "?"),
+            }
+        
+        # Intento 2: Buscar por temporada
+        r2 = requests.get(
+            f"https://{config.RAPIDAPI_HOST}/v3/fixtures",
+            headers={
+                "x-rapidapi-key": config.RAPIDAPI_KEY,
+                "x-rapidapi-host": config.RAPIDAPI_HOST
+            },
             params={
                 "h2h": f"{local}-{visitante}",
-                "status": "FT"
+                "status": "FT",
+                "last": 1
             },
             timeout=10
         )
         
-        if not r.ok:
-            return None
+        if r2.ok and r2.json().get("response"):
+            ultimo = r2.json()["response"][0]
+            return {
+                "goles_local": ultimo.get("goals", {}).get("home", "?"),
+                "goles_visitante": ultimo.get("goals", {}).get("away", "?"),
+            }
         
-        data = r.json()
-        if not data.get("response") or len(data["response"]) == 0:
-            return None
-        
-        ultimo = data["response"][0]
-        
-        return {
-            "goles_local": ultimo.get("goals", {}).get("home", "?"),
-            "goles_visitante": ultimo.get("goals", {}).get("away", "?"),
-        }
+        return None
     
     except Exception as e:
         logger.warning(f"⚠️ H2H: {e}")
         return None
-
 def obtener_resultado_final(local, visitante, fecha_str):
     """Obtiene resultado FINAL del partido una vez terminado"""
     if not config.RAPIDAPI_KEY:
