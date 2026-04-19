@@ -9,7 +9,7 @@ from functions import (
     es_hoy_y_futuro, hora_local_col, nombre_liga, obtener_h2h,
     enviar_telegram, formatear_alerta, registrar_alerta,
     cargar_historial, guardar_historial, sincronizar_google_sheets,
-    calcular_stats, formatear_stats, analisis_claude_ai, SESION
+    calcular_stats, formatear_stats, analisis_claude_ai, SESION, buscar_y_actualizar_resultados
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -48,6 +48,11 @@ def main():
         # ─── CARGAR HISTORIAL ────────────────────────────
         historial = cargar_historial()
         existing_ids = {a.get("id") for a in historial.get("alertas", [])}
+         # ─── ACTUALIZAR RESULTADOS PENDIENTES ─────────
+        resultados_actualizados = buscar_y_actualizar_resultados(historial)
+        if resultados_actualizados > 0:
+            guardar_historial(historial)
+            sincronizar_google_sheets(historial)
         
         # ─── OBTENER TODOS LOS PARTIDOS ───────────────
         todos = get_todos_los_partidos()
