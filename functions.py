@@ -659,10 +659,24 @@ def sincronizar_google_sheets(historial):
             ])
         
         # Actualizar
-        ws.clear()
-        ws.update("A1", todas_filas, value_input_option="USER_ENTERED")
-        logger.info(f"✅ Sheets: {len(todas_filas)-1} alertas")
-        
+        # Obtener número de filas existentes
+        existing_rows = len(ws.get_all_values())
+
+        if existing_rows <= 1:
+            # Primera vez: crear con headers
+            ws.update("A1", todas_filas, value_input_option="USER_ENTERED")
+            logger.info(f"✅ Sheets creado: {len(todas_filas)-1} alertas")
+        else:
+            # Ya existe: APPEND (agregar abajo, NO borrar)
+            # Actualizar solo desde la fila 2 en adelante (sin headers)
+            filas_datos = todas_filas[1:]  # Sin headers
+            
+            if filas_datos:
+                # Agregar a partir de donde terminó
+                start_row = existing_rows + 1
+                ws.update(f"A{start_row}", filas_datos, value_input_option="USER_ENTERED")
+                logger.info(f"✅ Sheets actualizado: +{len(filas_datos)} alertas (total: {existing_rows + len(filas_datos) - 1})")
+            
         # Aplicar estilos
         aplicar_estilos_sheets(ws, len(todas_filas), config.BANKROLL)
         
