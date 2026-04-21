@@ -205,7 +205,7 @@ def obtener_resultado_final(local, visitante, fecha_str):
         return None
     
     try:
-        # Convertir fecha a formato correcto
+        # Convertir fecha
         try:
             fecha_obj = datetime.fromisoformat(fecha_str.replace("Z", "+00:00"))
         except:
@@ -213,7 +213,7 @@ def obtener_resultado_final(local, visitante, fecha_str):
         
         fecha_date = fecha_obj.strftime("%Y-%m-%d")
         
-        # Buscar fixture por equipos y fecha
+        # Búsqueda 1: Por fecha y status FT
         r = requests.get(
             f"https://{config.RAPIDAPI_HOST}/v3/fixtures",
             headers={
@@ -222,37 +222,39 @@ def obtener_resultado_final(local, visitante, fecha_str):
             },
             params={
                 "date": fecha_date,
-                "status": "FT"  # FT = Final Time (Tiempo Final)
+                "status": "FT"
             },
             timeout=10
         )
         
-        if not r.ok:
-            return None
-        
-        data = r.json()
-        if not data.get("response"):
-            return None
-        
-        # Buscar el partido exacto
-        for fixture in data["response"]:
-            home = fixture.get("teams", {}).get("home", {}).get("name", "").lower()
-            away = fixture.get("teams", {}).get("away", {}).get("name", "").lower()
-            
-            if local.lower() in home and visitante.lower() in away:
-                goals_home = fixture.get("goals", {}).get("home")
-                goals_away = fixture.get("goals", {}).get("away")
+        if r.ok and r.json().get("response"):
+            for fixture in r.json()["response"]:
+                home = fixture.get("teams", {}).get("home", {}).get("name", "").lower().strip()
+                away = fixture.get("teams", {}).get("away", {}).get("name", "").lower().strip()
+                local_clean = local.lower().strip()
+                visitante_clean = visitante.lower().strip()
                 
-                if goals_home is not None and goals_away is not None:
-                    total_goles = goals_home + goals_away
+                # Match más flexible
+                if ((local_clean in home or home in local_clean) and 
+                    (visitante_clean in away or away in visitante_clean)):
                     
-                    return {
-                        "resultado": f"{goals_home}-{goals_away}",
-                        "goles_local": goals_home,
-                        "goles_visitante": goals_away,
-                        "total_goles": total_goles,
-                        "status": "FT"
-                    }
+                    goals_home = fixture.get("goals", {}).get("home")
+                    goals_away = fixture.get("goals", {}).get("away")
+                    
+                    if goals_home is not None and goals_away is not None:
+                        total_goles = goals_home + goals_away
+                        
+                        # BTTS: ambos anotan
+                        btts = (goals_home > 0 and goals_away > 0)
+                        
+                        return {
+                            "resultado": f"{goals_home}-{goals_away}",
+                            "goles_local": goals_home,
+                            "goles_visitante": goals_away,
+                            "total_goles": total_goles,
+                            "btts": btts,
+                            "status": "FT"
+                        }
         
         return None
     
@@ -261,28 +263,25 @@ def obtener_resultado_final(local, visitante, fecha_str):
         return None
 
 def actualizar_alerta_con_resultado(historial, alert_id, resultado_dict):
-    """Actualiza alerta con resultado final y calcula W/L"""
+    """Actualiza alerta con resultado final"""
     try:
         for alerta in historial.get("alertas", []):
             if alerta.get("id") == alert_id and alerta.get("estado") == "pendiente":
                 
                 tipo = alerta.get("tipo", "")
-                threshold = alerta.get("threshold", 3.5)
                 goles_totales = resultado_dict.get("total_goles", 0)
-                cuota = alerta.get("cuota", 0)
+                btts = resultado_dict.get("btts", False)
+                cuota = 0
                 apuesta = alerta.get("apuesta_cop", 0)
                 
-                # Determinar si ganó o perdió
-                if "under35" in tipo:
-                    # Under 3.5: gana si MENOS de 4 goles
-                    gano = goles_totales < 4
-                elif "over25" in tipo:
-                    # Over 2.5: gana si 3 O MÁS goles
-                    gano = goles_totales >= 3
-                else:
-                    return False
+                gano = False
                 
-                # Actualizar alerta
+                if tipo == "combinada":
+                    # Over 1.5 (≥2 goles) + BTTS (ambos anotan)
+                    gano = (goles_totales >= 2) and btts
+                    cuota = alerta.get("cuota_combinada", 0)
+                
+                # Actualizar
                 alerta["resultado"] = resultado_dict.get("resultado", "")
                 alerta["estado"] = "ganada" if gano else "perdida"
                 
@@ -291,7 +290,7 @@ def actualizar_alerta_con_resultado(historial, alert_id, resultado_dict):
                 else:
                     alerta["ganancia_real"] = -apuesta
                 
-                logger.info(f"✅ Alerta actualizada: {alerta['local']} vs {alerta['visitante']} | {resultado_dict.get('resultado')} | {'GANADA' if gano else 'PERDIDA'}")
+                logger.info(f"✅ Actualizada: {alerta['local']} vs {alerta['visitante']} | {resultado_dict.get('resultado')} | {'GANADA' if gano else 'PERDIDA'}")
                 return True
         
         return False
@@ -511,6 +510,89 @@ def formatear_alerta(tipo, threshold, liga, local, visitante, hora_col, score, c
     except Exception as e:
         logger.error(f"❌ Formato: {e}")
         return ""
+        
+def formatear_alerta_combinada(local, visitante, hora_col, score, cuota_over15, 
+                                cuota_btts, cuota_combinada, razones, h2h, liga):
+    """Formatea alerta de combinada profesional"""
+    try:
+        apuesta = config.BASE_STAKE
+        emoji = "🔥" if score >= 80 else "💰"
+        barra = "█" * round(score/10) + "░" * (10 - round(score/10))
+        
+        msg = (
+            f"{emoji} <b>ALERTA COMBINADA OFENSIVA</b>\n\n"
+            f"⚽ <b>{safe_html(local)} vs {safe_html(visitante)}</b>\n"
+            f"🏆 {safe_html(liga)}\n"
+            f"⏰ {hora_col} (Col)\n\n"
+            f"📊 <b>COMBINADA: Over 1.5 + Ambos Anotan</b>\n"
+            f"📈 Score: {score}/100\n"
+            f"<code>{barra}</code>\n\n"
+            f"💎 <b>CUOTAS</b>\n"
+            f"  • Over 1.5: {cuota_over15}\n"
+            f"  • Ambos Anotan: {cuota_btts}\n"
+            f"  • <b>COMBINADA: {cuota_combinada}</b> ⭐\n\n"
+        )
+        
+        if h2h:
+            msg += (
+                f"📝 <b>H2H</b>\n"
+                f"  • {safe_html(local)}: {h2h.get('goles_local', '?')}\n"
+                f"  • {safe_html(visitante)}: {h2h.get('goles_visitante', '?')}\n\n"
+            )
+        
+        msg += (
+            f"💰 <b>GESTIÓN DE RIESGO</b>\n"
+            f"💵 Stake: ${apuesta:,} COP\n\n"
+            f"<b>Razones:</b>\n"
+        )
+        
+        for r in razones[:4]:
+            msg += f"  {safe_html(r)}\n"
+        
+        msg += f"\n⚠️ Bet responsibly"
+        
+        return msg
+    
+    except Exception as e:
+        logger.error(f"❌ formatear_combinada: {e}")
+        return ""
+
+def registrar_alerta_combinada(historial, local, visitante, liga, score, 
+                               cuota_combinada, hora_col, sport_key, commence_time, 
+                               h2h, cuota_over15, cuota_btts):
+    """Registra alerta combinada en historial"""
+    historial = ensure_historial(historial)
+    alert_id = build_alert_id("combinada", local, visitante, sport_key, commence_time)
+    existentes = {a.get("id") for a in historial["alertas"]}
+    
+    if alert_id in existentes:
+        logger.warning(f"⚠️ Alerta duplicada: {local} vs {visitante}")
+        return False
+    
+    apuesta = config.BASE_STAKE
+    alerta = {
+        "id": alert_id,
+        "fecha": hora_colombia().strftime("%Y-%m-%d"),
+        "tipo": "combinada",
+        "mercados": ["over1.5", "btts"],
+        "local": local,
+        "visitante": visitante,
+        "liga": liga,
+        "score": score,
+        "cuota_over15": cuota_over15,
+        "cuota_btts": cuota_btts,
+        "cuota_combinada": cuota_combinada,
+        "hora_col": hora_col,
+        "apuesta_cop": apuesta,
+        "h2h": h2h,
+        "estado": "pendiente",
+        "resultado": None,
+        "ganancia_real": 0,
+    }
+    
+    historial["alertas"].append(alerta)
+    logger.info(f"📝 COMBINADA: {local} vs {visitante} | Cuota: {cuota_combinada}")
+    return True
 
 # ─── HISTORIAL ────────────────────────────────────────────
 def ensure_historial(historial):
