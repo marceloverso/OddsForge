@@ -10,7 +10,7 @@ from functions import (
     enviar_telegram, formatear_alerta, registrar_alerta,
     cargar_historial, guardar_historial, sincronizar_google_sheets,
     calcular_stats, formatear_stats, analisis_claude_ai, SESION, buscar_y_actualizar_resultados, build_alert_id
-)
+    )
 
 # ═══════════════════════════════════════════════════════════════
 #  🔥 ODDSFORGE - MAIN
