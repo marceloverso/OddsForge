@@ -633,13 +633,15 @@ def sincronizar_google_sheets(historial):
         # Construir filas
         todas_filas = [headers]
         balance = config.BANKROLL
+        ids_procesados = set()
         
         for idx, a in enumerate(sorted(alertas, key=lambda x: x.get("fecha", "")), 1):
-            estado = a.get("estado", "pendiente")
-            resultado = (a.get("resultado") or "").replace("-", "x") if a.get("resultado") else ""
-            ganancia = a.get("ganancia_real", 0) if estado != "pendiente" else ""
-            wl = "W" if estado == "ganada" else ("L" if estado == "perdida" else "⏳")
-            
+            # Evitar duplicados por ID
+            alert_id = a.get("id")
+            if alert_id in ids_procesados:
+                continue  # Salta si ya lo procesó
+            ids_procesados.add(alert_id)
+             
             h2h_str = ""
             if a.get("h2h"):
                 h2h_str = f"{a['h2h'].get('goles_local', '?')}-{a['h2h'].get('goles_visitante', '?')}"
