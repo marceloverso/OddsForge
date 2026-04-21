@@ -139,11 +139,11 @@ def extraer_cuotas(partido):
             }
 
             if resultado["btts"]:
-            avg_btts = round(sum(resultado["btts"]) / len(resultado["btts"]), 2)
-            cuotas_finales["btts"] = {
-                "cuota": avg_btts,
-                "nbm": len(resultado["btts"])
-            }
+                avg_btts = round(sum(resultado["btts"]) / len(resultado["btts"]), 2)
+                cuotas_finales["btts"] = {
+                    "cuota": avg_btts,
+                    "nbm": len(resultado["btts"])
+                }
             return cuotas_finales if cuotas_finales else None
     except:
         return None
