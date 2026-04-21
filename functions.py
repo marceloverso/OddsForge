@@ -102,39 +102,49 @@ def get_todos_los_partidos():
         logger.error(f"💥 {type(e).__name__}: {e}")
         return []
 
-def extraer_cuotas(partido, thresholds=[2.5, 3.5]):
-    """Extrae cuotas para múltiples thresholds"""
+def extraer_cuotas(partido):
+    """Extrae cuotas para Over 1.5 + BTTS"""
     try:
-        resultado = {}
+        resultado = {
+            "over15": None,
+            "btts": None
+        }
         
-        for threshold in thresholds:
-            cuotas_under, cuotas_over = [], []
-            
-            for bm in partido.get("bookmakers", []):
-                for market in bm.get("markets", []):
-                    if market["key"] != "totals":
-                        continue
-                    
+        for bm in partido.get("bookmakers", []):
+            for market in bm.get("markets", []):
+                # Over 1.5
+                if market["key"] == "totals":
                     for outcome in market["outcomes"]:
                         point = float(outcome.get("point", 0))
-                        if abs(point - threshold) < 0.01:
-                            if outcome["name"] == "Under":
-                                cuotas_under.append(float(outcome["price"]))
-                            elif outcome["name"] == "Over":
-                                cuotas_over.append(float(outcome["price"]))
-            
-            if cuotas_under:
-                avg_u = round(sum(cuotas_under) / len(cuotas_under), 2)
-                avg_o = round(sum(cuotas_over) / len(cuotas_over), 2) if cuotas_over else None
+                        if abs(point - 1.5) < 0.01 and outcome["name"] == "Over":
+                            if not resultado["over15"]:
+                                resultado["over15"] = []
+                            resultado["over15"].append(float(outcome["price"]))
+                    
+                # BTTS (Both Teams To Score)
+                if market["key"] == "btts":
+                    for outcome in market["outcomes"]:
+                        if outcome["name"] == "Yes":
+                            if not resultado["btts"]:
+                                resultado["btts"] = []
+                            resultado["btts"].append(float(outcome["price"]))
                 
-                resultado[f"t{threshold}"] = {
-                    "under": avg_u,
-                    "over": avg_o,
-                    "nbm": len(cuotas_under)
-                }
-        
-        return resultado if resultado else None
-    
+        # Calcular promedios
+        cuotas_finales = {}
+        if resultado["over15"]:
+            avg_o15 = round(sum(resultado["over15"]) / len(resultado["over15"]), 2)
+            cuotas_finales["over15"] = {
+                "cuota": avg_o15,
+                "nbm": len(resultado["over15"])
+            }
+
+            if resultado["btts"]:
+            avg_btts = round(sum(resultado["btts"]) / len(resultado["btts"]), 2)
+            cuotas_finales["btts"] = {
+                "cuota": avg_btts,
+                "nbm": len(resultado["btts"])
+            }
+            return cuotas_finales if cuotas_finales else None
     except:
         return None
 
