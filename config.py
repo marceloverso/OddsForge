@@ -32,8 +32,11 @@ TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 RAPIDAPI_HOST = "api-football-v1.p.rapidapi.com"
 
 # ─── THRESHOLDS ──────────────────────────────────────────────
-THRESHOLDS = [2.5, 3.5]  # Solo 2.5 y 3.5
-SOLO_UNDER_35_OVER_25 = True  # Solo Under 3.5 + Over 2.5
+THRESHOLDS = [1.5]  # ← SOLO 1.5
+SOLO_OVER_15_BTTS = True  # ← NUEVO: Over 1.5 + Both Teams To Score
+
+# ─── MERCADOS DE APUESTA ──────────────────────────────
+MARKETS = ["totals", "btts"]  # totals + Both Teams To Score
 
 # ─── RATES POR LIGA ──────────────────────────────────────────
 UNDER_RATES = {
