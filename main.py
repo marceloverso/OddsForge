@@ -80,148 +80,107 @@ def main():
             liga = nombre_liga(partido)
             partidos_analizados += 1
             
-            # Extraer cuotas
-            cuotas_dict = extraer_cuotas(partido, thresholds=[2.5, 3.5])
+            # Extraer cuotas (SOLO OVER 1.5 + BTTS)
+            cuotas_dict = extraer_cuotas(partido)
             if not cuotas_dict:
                 continue
             
-            # Obtener tasa de Under para esta liga
-            under_rate = config.UNDER_RATES.get(sport_key, 0.63)
-            
-            # Calcular probabilidades Poisson
-            prob_poisson_25 = calcular_poisson(1.3, 1.2, threshold=2.5)
-            prob_poisson_35 = calcular_poisson(1.3, 1.2, threshold=3.5)
-            
-            # Obtener H2H (si está disponible)
+            # Obtener H2H
             h2h = obtener_h2h(local, visitante) if config.RAPIDAPI_KEY else None
             
             # ═══════════════════════════════════════════════
-            #  🔵 UNDER 3.5 - MENOS DE 4 GOLES
+            #  ⚪ COMBINADA: OVER 1.5 + AMBOS ANOTAN
             # ═══════════════════════════════════════════════
-            if "t3.5" in cuotas_dict:
-                score_u35, razones_u35, value_u35 = calcular_score(
-                    threshold=3.5,
-                    rate=under_rate,
-                    cuota=cuotas_dict["t3.5"]["under"],
-                    cuota_alt=cuotas_dict["t3.5"]["over"],
-                    num_bm=cuotas_dict["t3.5"]["nbm"],
-                    prob_poisson=prob_poisson_35,
-                    es_under=True
-                )
-                
-                # Validar score y value
-                under_ok = (score_u35 >= config.SCORE_MINIMO and value_u35 > config.VALUE_BETTING_MIN)
-                
-                if under_ok:
-                    under_id = build_alert_id("under35", local, visitante, sport_key, 
-                          partido.get("commence_time", ""))
-                    
-                    if under_id not in existing_ids:
-                        msg = formatear_alerta(
-                            tipo="under",
-                            threshold="3.5",
-                            liga=liga,
-                            local=local,
-                            visitante=visitante,
-                            hora_col=hora_col,
-                            score=score_u35,
-                            cuota=cuotas_dict["t3.5"]["under"],
-                            prob=prob_poisson_35,
-                            value_pct=value_u35,
-                            razones=razones_u35,
-                            h2h=h2h
-                        )
-                        
-                        if msg and enviar_telegram(msg):
-                            alertas_enviadas += 1
-                            
-                            if registrar_alerta(
-                                historial=historial,
-                                tipo="under35",
-                                threshold=3.5,
-                                local=local,
-                                visitante=visitante,
-                                liga=liga,
-                                score=score_u35,
-                                cuota=cuotas_dict["t3.5"]["under"],
-                                hora_col=hora_col,
-                                sport_key=sport_key,
-                                commence_time=partido.get("commence_time", ""),
-                                value_pct=value_u35,
-                                h2h=h2h
-                            ):
-                                existing_ids.add(under_id)
-                            
-                            # Guardar y sincronizar
-                            guardar_historial(historial)
-                            sincronizar_google_sheets(historial)
-                            
-                            import time
-                            time.sleep(1)  # Rate limit
             
-            # ═══════════════════════════════════════════════
-            #  ⚪ OVER 2.5 - 3 O MÁS GOLES
-            # ═══════════════════════════════════════════════
-            if "t2.5" in cuotas_dict:
-                score_o25, razones_o25, value_o25 = calcular_score(
-                    threshold=2.5,
-                    rate=under_rate,
-                    cuota=cuotas_dict["t2.5"]["over"],
-                    cuota_alt=cuotas_dict["t2.5"]["under"],
-                    num_bm=cuotas_dict["t2.5"]["nbm"],
-                    prob_poisson=100 - prob_poisson_25,
-                    es_under=False
-                )
+            if "over15" in cuotas_dict and "btts" in cuotas_dict:
+                cuota_over15 = cuotas_dict["over15"]["cuota"]
+                cuota_btts = cuotas_dict["btts"]["cuota"]
+                cuota_combinada = round(cuota_over15 * cuota_btts, 2)
                 
-                # Validar score y value
-                over_ok = (score_o25 >= config.SCORE_MINIMO and value_o25 > config.VALUE_BETTING_MIN)
+                nbm = min(cuotas_dict["over15"]["nbm"], cuotas_dict["btts"]["nbm"])
                 
-                if over_ok:
-                    over_id = build_alert_id("over25", local, visitante, sport_key,
-                                                     partido.get("commence_time", ""))
+                # Score simple pero efectivo
+                score = 0
+                razones = []
+                
+                # Bonus por cuota alta
+                if cuota_combinada > 3.5:
+                    score += 30
+                    razones.append(f"Cuota combinada {cuota_combinada}: +30")
+                elif cuota_combinada > 3.0:
+                    score += 25
+                    razones.append(f"Cuota combinada {cuota_combinada}: +25")
+                elif cuota_combinada > 2.5:
+                    score += 20
+                    razones.append(f"Cuota combinada {cuota_combinada}: +20")
+                else:
+                    score += 15
+                    razones.append(f"Cuota combinada {cuota_combinada}: +15")
+                
+                # Bonus por bookmakers
+                if nbm >= 10:
+                    score += 20
+                    razones.append(f"{nbm} BM: +20")
+                elif nbm >= 6:
+                    score += 15
+                    razones.append(f"{nbm} BM: +15")
+                else:
+                    score += 8
+                    razones.append(f"{nbm} BM: +8")
+                
+                # Bonus por H2H
+                if h2h and (h2h.get("goles_local", 0) > 0 and h2h.get("goles_visitante", 0) > 0):
+                    score += 25
+                    razones.append(f"H2H ambos anotan: +25")
+                
+                score = min(score, 100)
+                
+                # Validar
+                combinada_ok = (score >= config.SCORE_MINIMO)
+                
+                if combinada_ok:
+                    combinada_id = build_alert_id("combinada", local, visitante, sport_key, 
+                                                  partido.get("commence_time", ""))
                     
-                    if over_id not in existing_ids:
-                        msg = formatear_alerta(
-                            tipo="over",
-                            threshold="2.5",
-                            liga=liga,
+                    if combinada_id not in existing_ids:
+                        msg = formatear_alerta_combinada(
                             local=local,
                             visitante=visitante,
                             hora_col=hora_col,
-                            score=score_o25,
-                            cuota=cuotas_dict["t2.5"]["over"],
-                            prob=100 - prob_poisson_25,
-                            value_pct=value_o25,
-                            razones=razones_o25,
-                            h2h=h2h
+                            score=score,
+                            cuota_over15=cuota_over15,
+                            cuota_btts=cuota_btts,
+                            cuota_combinada=cuota_combinada,
+                            razones=razones,
+                            h2h=h2h,
+                            liga=liga
                         )
                         
                         if msg and enviar_telegram(msg):
                             alertas_enviadas += 1
                             
-                            if registrar_alerta(
+                            if registrar_alerta_combinada(
                                 historial=historial,
-                                tipo="over25",
-                                threshold=2.5,
                                 local=local,
                                 visitante=visitante,
                                 liga=liga,
-                                score=score_o25,
-                                cuota=cuotas_dict["t2.5"]["over"],
+                                score=score,
+                                cuota_combinada=cuota_combinada,
                                 hora_col=hora_col,
                                 sport_key=sport_key,
                                 commence_time=partido.get("commence_time", ""),
-                                value_pct=value_o25,
-                                h2h=h2h
+                                h2h=h2h,
+                                cuota_over15=cuota_over15,
+                                cuota_btts=cuota_btts
                             ):
-                                existing_ids.add(over_id)
+                                existing_ids.add(combinada_id)
                             
                             # Guardar y sincronizar
                             guardar_historial(historial)
                             sincronizar_google_sheets(historial)
                             
                             import time
-                            time.sleep(1)  # Rate limit
+                            time.sleep(1)
         
         # ─── GUARDAR HISTORIAL FINAL ──────────────────
         guardar_historial(historial)
