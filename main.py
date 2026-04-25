@@ -84,6 +84,12 @@ def main():
             cuotas_dict = extraer_cuotas(partido)
             if not cuotas_dict:
                 continue
+            # DEBUG
+            if not cuotas_dict:
+                logger.info(f"⚠️ No hay cuotas: {local} vs {visitante}")
+                continue
+            else:
+                logger.info(f"✅ Cuotas encontradas para {local} vs {visitante}: {list(cuotas_dict.keys())}")
             
             # Obtener H2H
             h2h = obtener_h2h(local, visitante) if config.RAPIDAPI_KEY else None
