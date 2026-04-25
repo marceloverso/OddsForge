@@ -103,7 +103,7 @@ def get_todos_los_partidos():
         return []
 
 def extraer_cuotas(partido):
-    """Extrae cuotas para Over 1.5 + BTTS"""
+    """Extrae cuotas para Over 1.5 + BTTS - Búsqueda mejorada"""
     try:
         resultado = {
             "over15": None,
@@ -112,41 +112,64 @@ def extraer_cuotas(partido):
         
         for bm in partido.get("bookmakers", []):
             for market in bm.get("markets", []):
-                # Over 1.5
-                if market["key"] == "totals":
-                    for outcome in market["outcomes"]:
-                        point = float(outcome.get("point", 0))
-                        if abs(point - 1.5) < 0.01 and outcome["name"] == "Over":
-                            if not resultado["over15"]:
-                                resultado["over15"] = []
-                            resultado["over15"].append(float(outcome["price"]))
-                    
-                # BTTS (Both Teams To Score)
-                if market["key"] == "btts":
-                    for outcome in market["outcomes"]:
-                        if outcome["name"] == "Yes":
-                            if not resultado["btts"]:
-                                resultado["btts"] = []
-                            resultado["btts"].append(float(outcome["price"]))
+                market_key = market.get("key", "").lower()
                 
-        # Calcular promedios
+                # ─── BUSCAR OVER 1.5 ───────────────────
+                if "total" in market_key:  # totals, total_points, etc.
+                    for outcome in market.get("outcomes", []):
+                        try:
+                            point = float(outcome.get("point", 0))
+                            price = float(outcome.get("price", 0))
+                            name = outcome.get("name", "").strip()
+                            
+                            # Over 1.5 exacto
+                            if abs(point - 1.5) < 0.01 and name.lower() == "over":
+                                if not resultado["over15"]:
+                                    resultado["over15"] = []
+                                resultado["over15"].append(price)
+                        except:
+                            pass
+                
+                # ─── BUSCAR BTTS ───────────────────────
+                if "btts" in market_key or "both_teams" in market_key or "both team" in market_key.lower():
+                    for outcome in market.get("outcomes", []):
+                        try:
+                            price = float(outcome.get("price", 0))
+                            name = outcome.get("name", "").strip().lower()
+                            
+                            # BTTS = Yes
+                            if "yes" in name or "true" in name:
+                                if not resultado["btts"]:
+                                    resultado["btts"] = []
+                                resultado["btts"].append(price)
+                        except:
+                            pass
+        
+        # ─── CALCULAR PROMEDIOS ────────────────────
         cuotas_finales = {}
-        if resultado["over15"]:
+        
+        if resultado["over15"] and len(resultado["over15"]) > 0:
             avg_o15 = round(sum(resultado["over15"]) / len(resultado["over15"]), 2)
-            cuotas_finales["over15"] = {
-                "cuota": avg_o15,
-                "nbm": len(resultado["over15"])
-            }
-
-            if resultado["btts"]:
-                avg_btts = round(sum(resultado["btts"]) / len(resultado["btts"]), 2)
+            if avg_o15 > 0:
+                cuotas_finales["over15"] = {
+                    "cuota": avg_o15,
+                    "nbm": len(resultado["over15"])
+                }
+        
+        if resultado["btts"] and len(resultado["btts"]) > 0:
+            avg_btts = round(sum(resultado["btts"]) / len(resultado["btts"]), 2)
+            if avg_btts > 0:
                 cuotas_finales["btts"] = {
                     "cuota": avg_btts,
                     "nbm": len(resultado["btts"])
                 }
-            return cuotas_finales if cuotas_finales else None
-    except:
+        
+        return cuotas_finales if cuotas_finales else None
+    
+    except Exception as e:
+        logger.error(f"❌ extraer_cuotas: {e}")
         return None
+
 
 def obtener_h2h(local, visitante):
     """Obtiene H2H - intenta múltiples endpoints"""
