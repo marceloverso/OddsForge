@@ -91,7 +91,12 @@ def main():
             # ═══════════════════════════════════════════════
             #  ⚪ COMBINADA: OVER 1.5 + AMBOS ANOTAN
             # ═══════════════════════════════════════════════
-            
+            logger.info(f"DEBUG: {local} vs {visitante}")
+            logger.info(f"  Cuotas dict keys: {list(cuotas_dict.keys()) if cuotas_dict else 'None'}")
+            if cuotas_dict:
+                logger.info(f"  Over 1.5: {'SI' if 'over15' in cuotas_dict else 'NO'}")
+                logger.info(f"  BTTS: {'SI' if 'btts' in cuotas_dict else 'NO'}")
+                
             if "over15" in cuotas_dict and "btts" in cuotas_dict:
                 cuota_over15 = cuotas_dict["over15"]["cuota"]
                 cuota_btts = cuotas_dict["btts"]["cuota"]
