@@ -1,75 +1,54 @@
+"""Configuración central del Parlay Bot."""
 import os
-from pathlib import Path
+from dataclasses import dataclass
+from typing import List
 
-# ═══════════════════════════════════════════════════════════════
-#  🔧 ODDSFORGE - CONFIGURATION
-# ═══════════════════════════════════════════════════════════════
+@dataclass
+class Config:
+    """Todas las variables de entorno y reglas de negocio."""
 
-# ─── API KEYS ────────────────────────────────────────────────
-API_KEY = os.environ.get("API_KEY", "")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-CHAT_ID = os.environ.get("CHAT_ID", "")
-RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "").strip()
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
+    # API Keys
+    ODDS_API_KEY: str = os.getenv("ODDS_API_KEY", "")
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
 
-# ─── BOT SETTINGS ────────────────────────────────────────────
-BANKROLL = int(os.environ.get("BANKROLL", 300000))
-SCORE_MINIMO = int(os.environ.get("SCORE_MINIMO", 70))
-VALUE_BETTING_MIN = int(os.environ.get("VALUE_BETTING_MIN", 2))
-BASE_STAKE = int(os.environ.get("BASE_STAKE", 5000))
+    # The Odds API
+    ODDS_BASE_URL: str = "https://api.the-odds-api.com/v4"
+    REGIONS: str = "eu"           # Cuotas decimales europeas
+    MARKETS: str = "h2h"          # Solo moneyline
+    ODDS_FORMAT: str = "decimal"  # Forzar decimal
+    DATE_FORMAT: str = "iso"
 
-# ─── PATHS ───────────────────────────────────────────────────
-DATA_DIR = Path("./bot_data")
-HISTORIAL_F = DATA_DIR / "historial.json"
-RESULTADOS_F = DATA_DIR / "resultados.json"
-DATA_DIR.mkdir(exist_ok=True)
+    # Reglas del Parlay
+    MIN_PICKS: int = 10
+    MAX_PICKS: int = 14
+    MAX_PER_SPORT: int = 4
+    STAKE_COP: int = 2000
 
-# ─── API ENDPOINTS ───────────────────────────────────────────
-ODDS_BASE = "https://api.the-odds-api.com/v4"
-TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-RAPIDAPI_HOST = "api-football-v1.p.rapidapi.com"
+    # Filtro de cuotas (sweet spot para favoritos moderados)
+    MIN_ODD: float = 1.35
+    MAX_ODD: float = 2.30
+    TARGET_ODD: float = 1.65      # Cuota ideal que buscamos
 
-# ─── THRESHOLDS ──────────────────────────────────────────────
-THRESHOLDS = [1.5]  # ← SOLO 1.5
-SOLO_OVER_15_BTTS = True  # ← NUEVO: Over 1.5 + Both Teams To Score
+    # Deportes a monitorear (priorizados, se ignora si no están en temporada)
+    SPORTS_PRIORITY: List[str] = None
 
-# ─── MERCADOS DE APUESTA ──────────────────────────────
-MARKETS = ["totals", "btts"]  # totals + Both Teams To Score
+    def __post_init__(self):
+        self.SPORTS_PRIORITY = [
+            # Fútbol
+            "soccer_epl", "soccer_spain_la_liga", "soccer_germany_bundesliga",
+            "soccer_italy_serie_a", "soccer_france_ligue_one", "soccer_uefa_champs_league",
+            "soccer_brazil_campeonato", "soccer_argentina_primera_division",
+            "soccer_usa_mls", "soccer_mexico_ligamx", "soccer_colombia",
 
-# ─── RATES POR LIGA ──────────────────────────────────────────
-UNDER_RATES = {
-    "soccer_colombia_primera_a": 0.70,
-    "soccer_argentina_primera_division": 0.70,
-    "soccer_chile_campeonato": 0.69,
-    "soccer_brazil_campeonato": 0.67,
-    "soccer_efl_champ": 0.65,
-    "soccer_france_ligue_one": 0.63,
-    "soccer_germany_bundesliga": 0.58,
-    "soccer_italy_serie_a": 0.63,
-    "soccer_spain_la_liga": 0.63,
-    "soccer_portugal_primeira_liga": 0.62,
-}
+            # Americanos
+            "americanfootball_nfl", "basketball_nba", "baseball_mlb",
+            "icehockey_nhl", "americanfootball_ncaaf",
 
-# ─── HORARIOS DE EJECUCIÓN ──────────────────────────────────
-BLOQUES_EJECUCION = {
-    "manana": (7, 10),
-    "media_manana": (10, 12),
-    "mediodia": (12, 14),
-    "tarde": (14, 17),
-    "noche": (17, 20),
-    "madrugada1": (20, 23),
-    "madrugada2": (23, 26),
-    "madrugada3": (26, 30),
-}
+            # Otros
+            "basketball_euroleague", "tennis_atp_french_open", "tennis_wta_french_open",
+            "mma_mixed_martial_arts", "cricket_ipl", "aussierules_afl",
+            "rugbyleague_nrl", "rugbyunion_six_nations",
+        ]
 
-# ─── VALIDACIÓN ──────────────────────────────────────────────
-REQUERIDAS = ["API_KEY", "BOT_TOKEN", "CHAT_ID"]
-
-def validar_config():
-    """Valida que todas las variables requeridas estén configuradas"""
-    faltantes = [v for v in REQUERIDAS if not os.environ.get(v)]
-    if faltantes:
-        raise ValueError(f"❌ Variables de entorno faltantes: {', '.join(faltantes)}")
-    return True
+CONFIG = Config()
