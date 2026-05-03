@@ -1,11 +1,10 @@
 """Notificador via Telegram Bot."""
 import logging
-from typing import Optional
 
 import httpx
 
 from config import CONFIG
-from src.selector import Parlay
+from selector import Parlay
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 import httpx
 
@@ -34,8 +34,6 @@ class OddsClient:
             resp = await self.client.get(url, params=params)
             resp.raise_for_status()
             data = resp.json()
-
-            # Actualizar quota (aunque /sports no cuenta, por si acaso)
             self._update_quota(resp.headers)
 
             active = {s["key"] for s in data if s.get("active") and not s.get("has_outrights", False)}
@@ -74,7 +72,7 @@ class OddsClient:
 
     async def get_all_odds(self, sport_keys: List[str]) -> Dict[str, List[Dict[str, Any]]]:
         """Consulta odds de todos los deportes en paralelo (concurrency limitada)."""
-        semaphore = asyncio.Semaphore(5)  # Máximo 5 requests concurrentes
+        semaphore = asyncio.Semaphore(5)
         results = {}
 
         async def fetch(sport):
@@ -91,7 +89,6 @@ class OddsClient:
         return results
 
     def _update_quota(self, headers: httpx.Headers):
-        """Actualiza contadores de quota desde headers de respuesta."""
         try:
             self.requests_used = int(headers.get("x-requests-used", self.requests_used))
             self.requests_remaining = int(headers.get("x-requests-remaining", self.requests_remaining))
@@ -106,4 +103,4 @@ class OddsClient:
             today_col = datetime.now(COLOMBIA_TZ)
             return dt_col.date() == today_col.date()
         except Exception:
-            return True  # Si falla el parseo, incluirlo por defecto
+            return True
