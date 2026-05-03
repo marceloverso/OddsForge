@@ -1,0 +1,82 @@
+"""Notificador via Telegram Bot."""
+import logging
+from typing import Optional
+
+import httpx
+
+from config import CONFIG
+from src.selector import Parlay
+
+logger = logging.getLogger(__name__)
+
+
+class TelegramNotifier:
+    def __init__(self):
+        self.token = CONFIG.TELEGRAM_BOT_TOKEN
+        self.chat_id = CONFIG.TELEGRAM_CHAT_ID
+        self.base_url = f"https://api.telegram.org/bot{self.token}"
+        self.client = httpx.AsyncClient(timeout=30.0)
+
+    async def close(self):
+        await self.client.aclose()
+
+    async def send_parlay(self, parlay: Parlay) -> bool:
+        if not parlay.picks:
+            msg = (
+                "📭 *Parlay del Día*\n\n"
+                "No se encontraron suficientes partidos hoy para armar un parlay.\n"
+                "Intenta mañana. ☕"
+            )
+            return await self._send_message(msg)
+
+        lines = [
+            "🏆 *PARLAY DEL DÍA* 🏆",
+            f"📅 Fecha: {self._today_colombia()}",
+            f"💰 Apuesta sugerida: ${parlay.stake_cop:,} COP",
+            f"📊 Cuota total acumulada: `{parlay.total_odd}`",
+            f"💵 Retorno potencial: ${parlay.potential_return:,.0f} COP",
+            "",
+            f"📋 *PICKS SELECCIONADOS ({len(parlay.picks)}):*",
+            "",
+        ]
+
+        for i, pick in enumerate(parlay.picks, 1):
+            lines.append(
+                f"{i}. *{pick.sport_title}*\n"
+                f"   🏠 {pick.home_team} vs {pick.away_team}\n"
+                f"   🎯 Pick: `{pick.selection}`\n"
+                f"   📈 Cuota: `{pick.odd}`"
+            )
+
+        lines.extend(["", parlay.disclaimer])
+
+        message = "\n".join(lines)
+        return await self._send_message(message)
+
+    async def _send_message(self, text: str) -> bool:
+        if not self.token or not self.chat_id:
+            logger.error("Faltan credenciales de Telegram.")
+            return False
+
+        url = f"{self.base_url}/sendMessage"
+        payload = {
+            "chat_id": self.chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True,
+        }
+
+        try:
+            resp = await self.client.post(url, json=payload)
+            resp.raise_for_status()
+            logger.info("Mensaje enviado a Telegram.")
+            return True
+        except Exception as e:
+            logger.error(f"Error enviando a Telegram: {e}")
+            return False
+
+    @staticmethod
+    def _today_colombia() -> str:
+        from datetime import datetime, timezone, timedelta
+        tz = timezone(timedelta(hours=-5))
+        return datetime.now(tz).strftime("%d/%m/%Y")
