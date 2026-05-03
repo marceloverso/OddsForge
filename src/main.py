@@ -1,12 +1,14 @@
-"""Entry point del Parlay Bot."""
+"""Entry point del Parlay Bot (mañana)."""
 import asyncio
 import logging
 import sys
+from datetime import datetime, timezone, timedelta
 
 from config import CONFIG
 from odds_client import OddsClient
 from selector import ParlaySelector
 from telegram import TelegramNotifier
+from sheets_client import SheetsClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,6 +16,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("parlay_bot")
+COLOMBIA_TZ = timezone(timedelta(hours=-5))
 
 
 async def main():
@@ -26,6 +29,7 @@ async def main():
     client = OddsClient()
     selector = ParlaySelector()
     notifier = TelegramNotifier()
+    sheets = SheetsClient()
 
     try:
         logger.info("Consultando deportes en temporada...")
@@ -50,8 +54,27 @@ async def main():
         candidates = selector.extract_picks(today_odds)
         parlay = selector.build_parlay(candidates)
 
+        # Enviar a Telegram
         logger.info(f"Enviando parlay con {len(parlay.picks)} picks (cuota: {parlay.total_odd})...")
         await notifier.send_parlay(parlay)
+
+        # Escribir en Google Sheets
+        if parlay.picks and sheets.sheet:
+            date_str = datetime.now(COLOMBIA_TZ).strftime("%d/%m/%Y")
+            picks_data = [
+                {
+                    "sport_key": p.sport_key,
+                    "sport_title": p.sport_title,
+                    "home_team": p.home_team,
+                    "away_team": p.away_team,
+                    "selection": p.selection,
+                    "odd": p.odd,
+                    "commence_time": p.commence_time,
+                }
+                for p in parlay.picks
+            ]
+            sheets.write_picks(date_str, picks_data, parlay.total_odd)
+            logger.info("Picks guardados en Google Sheets.")
 
         logger.info(
             f"✅ Listo. Requests usados este mes: {client.requests_used}, "

@@ -52,6 +52,40 @@ class TelegramNotifier:
         message = "\n".join(lines)
         return await self._send_message(message)
 
+    async def send_results_summary(self, date_str: str, results: list, all_won: bool, total_odd: float) -> bool:
+        """Envía resumen de resultados al final del día."""
+        won_count = sum(1 for r in results if r["status"] == "✅ GANADA")
+        lost_count = sum(1 for r in results if r["status"] == "❌ PERDIDA")
+        pending_count = sum(1 for r in results if r["status"] == "⏳ PENDIENTE")
+
+        if all_won and won_count > 0:
+            header = (
+                "🎉🎉🎉 *¡FELICIDADES, CORONAMOS EL PARLAY!* 🎉🎉🎉\n"
+                f"📅 Fecha: {date_str}\n"
+                f"📊 Cuota acumulada: `{total_odd}`\n"
+                f"💵 Si apostaste $2.000 COP, cobraste ${2000*total_odd:,.0f} COP\n\n"
+                "🏆 Todos los picks fueron ganadores. ¡Buena lectura!"
+            )
+        else:
+            header = (
+                f"📉 *RESUMEN DEL DÍA — {date_str}*\n\n"
+                f"✅ Ganadas: {won_count}\n"
+                f"❌ Perdidas: {lost_count}\n"
+                f"⏳ Pendientes (no encontradas en DB): {pending_count}\n\n"
+                "El parlay no cobró, pero seguimos en la lucha. 💪"
+            )
+
+        lines = [header, "", "*DETALLE:*"]
+        for r in results:
+            emoji = "✅" if r["status"] == "✅ GANADA" else ("❌" if r["status"] == "❌ PERDIDA" else "⏳")
+            lines.append(
+                f"{emoji} {r['sport']} | {r['home']} vs {r['away']}\n"
+                f"   Pick: {r['pick']} | Resultado: {r.get('score', 'N/A')} | {r['status']}"
+            )
+
+        message = "\n".join(lines)
+        return await self._send_message(message)
+
     async def _send_message(self, text: str) -> bool:
         if not self.token or not self.chat_id:
             logger.error("Faltan credenciales de Telegram.")
