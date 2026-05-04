@@ -5,7 +5,6 @@ import os
 from typing import List, Dict, Any, Optional
 
 import gspread
-from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 
 from config import CONFIG
@@ -30,18 +29,15 @@ class SheetsClient:
     def _connect(self):
         """Autentica con la Service Account."""
         try:
-            # El JSON de credenciales puede venir como variable de entorno o archivo
             creds_json = CONFIG.GOOGLE_CREDENTIALS_JSON
             if not creds_json:
                 logger.error("Falta GOOGLE_CREDENTIALS_JSON.")
                 return
 
-            # Si viene como string JSON crudo
             if creds_json.strip().startswith("{"):
                 info = json.loads(creds_json)
                 creds = Credentials.from_service_account_info(info, scopes=SCOPES)
             else:
-                # Si es path a archivo
                 creds = Credentials.from_service_account_file(creds_json, scopes=SCOPES)
 
             self.client = gspread.authorize(creds)
@@ -87,8 +83,16 @@ class SheetsClient:
         try:
             records = self.sheet.get_all_records()
             pending = []
-            for i, row in enumerate(records, start=2):  # start=2 porque fila 1 es header
-                if str(row.get("Fecha", "")) == date_str and "PENDIENTE" in str(row.get("Estado", "")):
+
+            for i, row in enumerate(records, start=2):
+                row_fecha = str(row.get("Fecha", "")).strip()
+                row_estado = str(row.get("Estado", "")).strip().upper()
+
+                # Comparación robusta: soporta "04/05/2026", "04/05/2026 00:00:00", etc.
+                fecha_match = row_fecha.startswith(date_str) or date_str in row_fecha
+                estado_match = "PENDIENTE" in row_estado
+
+                if fecha_match and estado_match:
                     pending.append({
                         "row_index": i,
                         "fecha": row.get("Fecha"),
@@ -102,7 +106,8 @@ class SheetsClient:
                         "estado": row.get("Estado"),
                         "cuota_acumulada": row.get("Cuota Acumulada"),
                     })
-            logger.info(f"Picks pendientes encontrados: {len(pending)}")
+
+            logger.info(f"Picks pendientes encontrados para {date_str}: {len(pending)}")
             return pending
         except Exception as e:
             logger.error(f"Error leyendo Sheets: {e}")
@@ -113,7 +118,6 @@ class SheetsClient:
         if not self.sheet:
             return
         try:
-            # Columnas: I=Resultado, J=Estado
             self.sheet.update_cell(row_index, 9, score)
             self.sheet.update_cell(row_index, 10, status)
             logger.info(f"Fila {row_index} actualizada: {status}")

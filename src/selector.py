@@ -89,13 +89,9 @@ class ParlaySelector:
         score = max(0.0, 1.0 - (distance / 1.0))
         return score
 
-    def build_parlay(self, candidates: List[Pick]) -> Parlay:
-        if len(candidates) < CONFIG.MIN_PICKS:
-            logger.warning(f"Solo {len(candidates)} candidatos. Mínimo requerido: {CONFIG.MIN_PICKS}")
-            return Parlay(picks=[], total_odd=0.0, stake_cop=CONFIG.STAKE_COP, potential_return=0.0)
-
+    def _select_with_limit(self, candidates: List[Pick], max_per_sport: int) -> List[Pick]:
+        """Selecciona picks respetando un límite por deporte."""
         candidates.sort(key=self.score_pick, reverse=True)
-
         selected = []
         sport_counts: Dict[str, int] = {}
 
@@ -103,7 +99,7 @@ class ParlaySelector:
             sport = pick.sport_key
             current = sport_counts.get(sport, 0)
 
-            if current >= CONFIG.MAX_PER_SPORT:
+            if current >= max_per_sport:
                 continue
 
             selected.append(pick)
@@ -111,6 +107,29 @@ class ParlaySelector:
 
             if len(selected) >= CONFIG.MAX_PICKS:
                 break
+
+        return selected
+
+    def build_parlay(self, candidates: List[Pick]) -> Parlay:
+        """Construye el mejor parlay respetando restricciones, con fallback a fútbol."""
+        if len(candidates) < CONFIG.MIN_PICKS:
+            logger.warning(f"Solo {len(candidates)} candidatos. Mínimo requerido: {CONFIG.MIN_PICKS}")
+            return Parlay(picks=[], total_odd=0.0, stake_cop=CONFIG.STAKE_COP, potential_return=0.0)
+
+        # Intento 1: máximo 4 por deporte (diversificación)
+        selected = self._select_with_limit(candidates, CONFIG.MAX_PER_SPORT)
+        logger.info(f"Selección diversificada: {len(selected)} picks.")
+
+        # Intento 2 (FALLBACK): si no alcanzamos 10, relajamos a 14 por deporte
+        # priorizando el deporte con más candidatos (típicamente fútbol)
+        if len(selected) < CONFIG.MIN_PICKS:
+            logger.info(f"No alcanzó con diversificación ({len(selected)}). Aplicando fallback a puro fútbol/deporte mayoritario...")
+            selected = self._select_with_limit(candidates, CONFIG.MAX_PICKS)  # max 14 por deporte = sin límite real
+            logger.info(f"Selección fallback: {len(selected)} picks.")
+
+        if len(selected) < CONFIG.MIN_PICKS:
+            logger.warning(f"Aún con fallback solo hay {len(selected)} picks.")
+            return Parlay(picks=[], total_odd=0.0, stake_cop=CONFIG.STAKE_COP, potential_return=0.0)
 
         total_odd = round(prod([p.odd for p in selected]), 2)
         potential = round(CONFIG.STAKE_COP * total_odd, 2)

@@ -32,9 +32,15 @@ async def main():
 
         # 1. Leer picks pendientes del día
         pending = sheets.get_pending_picks(today_str)
+
         if not pending:
-            logger.info("No hay picks pendientes para hoy.")
-            await telegram._send_message(f"📭 No hay picks pendientes para {today_str}.")
+            msg = (
+                f"📭 *Verificación nocturna — {today_str}*\n\n"
+                "No se encontraron picks pendientes en el Sheet para hoy.\n"
+                "¿Se generó el parlay esta mañana? Revisa el Sheet manualmente."
+            )
+            await telegram._send_message(msg)
+            logger.info("No hay picks pendientes. Saliendo.")
             return
 
         # 2. Agrupar por deporte (TheSportsDB sport name)
@@ -68,8 +74,12 @@ async def main():
                         "score": score,
                         "status": status,
                     })
-                    if float(pick.get("cuota_acumulada", 0)) > total_odd:
-                        total_odd = float(pick["cuota_acumulada"])
+                    cuota_acc = str(pick.get("cuota_acumulada", "0")).replace(",", ".")
+                    try:
+                        if float(cuota_acc) > total_odd:
+                            total_odd = float(cuota_acc)
+                    except ValueError:
+                        pass
                 else:
                     logger.warning(f"No se encontró match para: {pick['local']} vs {pick['visitante']}")
                     all_results.append({
@@ -84,8 +94,8 @@ async def main():
         # 4. Determinar si se coronó
         won_count = sum(1 for r in all_results if r["status"] == "✅ GANADA")
         lost_count = sum(1 for r in all_results if r["status"] == "❌ PERDIDA")
-        all_won = (won_count > 0 and lost_count == 0 and 
-                   not any(r["status"] == "⏳ PENDIENTE" for r in all_results))
+        pending_count = sum(1 for r in all_results if r["status"] == "⏳ PENDIENTE")
+        all_won = (won_count > 0 and lost_count == 0 and pending_count == 0)
 
         # 5. Enviar resumen a Telegram
         await telegram.send_results_summary(today_str, all_results, all_won, total_odd)
