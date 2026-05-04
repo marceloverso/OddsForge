@@ -58,23 +58,32 @@ async def main():
         logger.info(f"Enviando parlay con {len(parlay.picks)} picks (cuota: {parlay.total_odd})...")
         await notifier.send_parlay(parlay)
 
-        # Escribir en Google Sheets
-        if parlay.picks and sheets.sheet:
-            date_str = datetime.now(COLOMBIA_TZ).strftime("%d/%m/%Y")
-            picks_data = [
-                {
-                    "sport_key": p.sport_key,
-                    "sport_title": p.sport_title,
-                    "home_team": p.home_team,
-                    "away_team": p.away_team,
-                    "selection": p.selection,
-                    "odd": p.odd,
-                    "commence_time": p.commence_time,
-                }
-                for p in parlay.picks
-            ]
-            sheets.write_picks(date_str, picks_data, parlay.total_odd)
-            logger.info("Picks guardados en Google Sheets.")
+        # Escribir en Google Sheets — LOGS DETALLADOS
+        date_str = datetime.now(COLOMBIA_TZ).strftime("%d/%m/%Y")
+        logger.info(f"Fecha a escribir en Sheet: {date_str}")
+
+        if not parlay.picks:
+            logger.warning("No hay picks para escribir en el Sheet.")
+        else:
+            if sheets.sheet:
+                logger.info(f"Sheet conectado. ID: {CONFIG.GOOGLE_SHEETS_ID}")
+                picks_data = [
+                    {
+                        "sport_key": p.sport_key,
+                        "sport_title": p.sport_title,
+                        "home_team": p.home_team,
+                        "away_team": p.away_team,
+                        "selection": p.selection,
+                        "odd": p.odd,
+                        "commence_time": p.commence_time,
+                    }
+                    for p in parlay.picks
+                ]
+                sheets.write_picks(date_str, picks_data, parlay.total_odd)
+                logger.info("✅ Llamada a write_picks() completada.")
+            else:
+                logger.error("❌ sheets.sheet es None. No se pudo conectar al Sheet.")
+                logger.error("   Revisa: GOOGLE_SHEETS_ID, GOOGLE_CREDENTIALS_JSON, nombre de pestaña 'Parlays', y permisos de Editor.")
 
         logger.info(
             f"✅ Listo. Requests usados este mes: {client.requests_used}, "

@@ -41,15 +41,27 @@ class SheetsClient:
                 creds = Credentials.from_service_account_file(creds_json, scopes=SCOPES)
 
             self.client = gspread.authorize(creds)
-            self.sheet = self.client.open_by_key(self.sheet_id).worksheet("Parlays")
-            logger.info("Conectado a Google Sheets.")
+
+            # Intentar abrir la pestaña "Parlays"
+            try:
+                spreadsheet = self.client.open_by_key(self.sheet_id)
+                self.sheet = spreadsheet.worksheet("Parlays")
+                logger.info("Conectado a Google Sheets (pestaña 'Parlays').")
+            except gspread.WorksheetNotFound:
+                logger.error("❌ No se encontró la pestaña 'Parlays'. Verifica el nombre exacto.")
+                logger.error(f"   Pestañas disponibles: {[w.title for w in spreadsheet.worksheets()]}")
+            except gspread.SpreadsheetNotFound:
+                logger.error("❌ No se encontró el Spreadsheet. Verifica GOOGLE_SHEETS_ID.")
+            except Exception as e:
+                logger.error(f"❌ Error abriendo Sheet: {e}")
+
         except Exception as e:
             logger.error(f"Error conectando a Sheets: {e}")
 
     def write_picks(self, date_str: str, picks: List[Dict[str, Any]], total_odd: float):
         """Escribe los picks del día como nuevas filas."""
         if not self.sheet:
-            logger.error("No hay conexión a Sheets.")
+            logger.error("No hay conexión a Sheets. No se escribió nada.")
             return
 
         rows = []
@@ -69,10 +81,11 @@ class SheetsClient:
             ])
 
         try:
+            logger.info(f"Intentando escribir {len(rows)} filas en el Sheet...")
             self.sheet.append_rows(rows, value_input_option="USER_ENTERED")
-            logger.info(f"Escritos {len(rows)} picks en Sheets.")
+            logger.info(f"✅ Escritos {len(rows)} picks en Sheets.")
         except Exception as e:
-            logger.error(f"Error escribiendo en Sheets: {e}")
+            logger.error(f"❌ Error escribiendo en Sheets: {e}")
 
     def get_pending_picks(self, date_str: str) -> List[Dict[str, Any]]:
         """Lee picks del día con estado PENDIENTE."""
@@ -81,14 +94,15 @@ class SheetsClient:
             return []
 
         try:
+            logger.info(f"Leyendo Sheet para buscar picks del {date_str}...")
             records = self.sheet.get_all_records()
-            pending = []
+            logger.info(f"Total filas leídas del Sheet: {len(records)}")
 
+            pending = []
             for i, row in enumerate(records, start=2):
                 row_fecha = str(row.get("Fecha", "")).strip()
                 row_estado = str(row.get("Estado", "")).strip().upper()
 
-                # Comparación robusta: soporta "04/05/2026", "04/05/2026 00:00:00", etc.
                 fecha_match = row_fecha.startswith(date_str) or date_str in row_fecha
                 estado_match = "PENDIENTE" in row_estado
 
