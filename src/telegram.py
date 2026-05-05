@@ -38,7 +38,6 @@ class TelegramNotifier:
             f"📋 *PICKS SELECCIONADOS ({len(parlay.picks)}):*",
             "",
         ]
-
         for i, pick in enumerate(parlay.picks, 1):
             lines.append(
                 f"{i}. *{pick.sport_title}*\n"
@@ -46,14 +45,11 @@ class TelegramNotifier:
                 f"   🎯 Pick: `{pick.selection}`\n"
                 f"   📈 Cuota: `{pick.odd}`"
             )
-
         lines.extend(["", parlay.disclaimer])
-
         message = "\n".join(lines)
         return await self._send_message(message)
 
     async def send_results_summary(self, date_str: str, results: list, all_won: bool, total_odd: float) -> bool:
-        """Envía resumen de resultados al final del día."""
         won_count = sum(1 for r in results if r["status"] == "✅ GANADA")
         lost_count = sum(1 for r in results if r["status"] == "❌ PERDIDA")
         pending_count = sum(1 for r in results if r["status"] == "⏳ PENDIENTE")
@@ -82,7 +78,6 @@ class TelegramNotifier:
                 f"{emoji} {r['sport']} | {r['home']} vs {r['away']}\n"
                 f"   Pick: {r['pick']} | Resultado: {r.get('score', 'N/A')} | {r['status']}"
             )
-
         message = "\n".join(lines)
         return await self._send_message(message)
 
@@ -90,7 +85,6 @@ class TelegramNotifier:
         if not self.token or not self.chat_id:
             logger.error("Faltan credenciales de Telegram.")
             return False
-
         url = f"{self.base_url}/sendMessage"
         payload = {
             "chat_id": self.chat_id,
@@ -98,7 +92,6 @@ class TelegramNotifier:
             "parse_mode": "Markdown",
             "disable_web_page_preview": True,
         }
-
         try:
             resp = await self.client.post(url, json=payload)
             resp.raise_for_status()

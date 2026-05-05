@@ -13,8 +13,6 @@ COLOMBIA_TZ = timezone(timedelta(hours=-5))
 
 
 class SportsDBClient:
-    """Busca resultados de partidos en TheSportsDB."""
-
     def __init__(self):
         self.api_key = CONFIG.SPORTSDB_API_KEY
         self.base_url = CONFIG.SPORTSDB_BASE_URL
@@ -24,14 +22,8 @@ class SportsDBClient:
         await self.client.aclose()
 
     async def get_events_by_date(self, sport_name: str, date_str: str) -> List[Dict[str, Any]]:
-        """
-        Consulta eventsday.php para un deporte y fecha.
-        date_str debe ser YYYY-MM-DD.
-        sport_name: Soccer, Baseball, Basketball, Ice Hockey, etc.
-        """
         url = f"{self.base_url}/{self.api_key}/eventsday.php"
         params = {"d": date_str, "s": sport_name}
-
         try:
             resp = await self.client.get(url, params=params)
             resp.raise_for_status()
@@ -43,63 +35,42 @@ class SportsDBClient:
             logger.error(f"Error consultando TheSportsDB ({sport_name}): {e}")
             return []
 
-    def find_match(self, picks: List[Dict[str, Any]], events: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Intenta hacer match entre un pick y la lista de eventos de TheSportsDB.
-        Retorna el evento matched o None.
-        """
+    def find_match(self, picks: List[Dict[str, Any]], events: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if not events:
             return None
-
         for event in events:
             home_db = self._normalize(event.get("strHomeTeam", ""))
             away_db = self._normalize(event.get("strAwayTeam", ""))
-
             for pick in picks:
                 home_pick = self._normalize(pick["local"])
                 away_pick = self._normalize(pick["visitante"])
-
-                # Match si ambos equipos coinciden (en cualquier orden por si acaso)
-                if (home_db in home_pick or home_pick in home_db) and                    (away_db in away_pick or away_pick in away_db):
+                if (home_db in home_pick or home_pick in home_db) and \
+                   (away_db in away_pick or away_pick in away_db):
                     return event
-
         return None
 
     def determine_winner(self, event: Dict[str, Any], pick_team: str) -> tuple:
-        """
-        Determina si el pick ganó.
-        Retorna (score_str, status_str)
-        """
         home_score = event.get("intHomeScore")
         away_score = event.get("intAwayScore")
-        status_event = event.get("strStatus", "")
-
-        # Si no hay scores, puede que no haya terminado
         if home_score is None or away_score is None:
             return ("N/A", "⏳ PENDIENTE")
-
         try:
             h = int(home_score)
             a = int(away_score)
         except (ValueError, TypeError):
             return (f"{home_score}-{away_score}", "⏳ PENDIENTE")
-
         score_str = f"{h}-{a}"
         pick_norm = self._normalize(pick_team)
         home_norm = self._normalize(event.get("strHomeTeam", ""))
         away_norm = self._normalize(event.get("strAwayTeam", ""))
-
-        # Determinar quién ganó
         if h > a:
             winner = home_norm
         elif a > h:
             winner = away_norm
         else:
             winner = "draw"
-
         if winner == "draw":
-            return (score_str, "❌ PERDIDA")  # Moneyline no cubre empate
-
+            return (score_str, "❌ PERDIDA")
         if pick_norm in winner or winner in pick_norm:
             return (score_str, "✅ GANADA")
         else:
@@ -107,7 +78,6 @@ class SportsDBClient:
 
     @staticmethod
     def _normalize(name: str) -> str:
-        """Normaliza nombre para comparación fuzzy."""
         name = name.lower().strip()
         name = re.sub(r"[^a-z0-9]", "", name)
         return name

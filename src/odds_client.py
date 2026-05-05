@@ -13,8 +13,6 @@ COLOMBIA_TZ = timezone(timedelta(hours=-5))
 
 
 class OddsClient:
-    """Wrapper alrededor de The Odds API."""
-
     def __init__(self):
         self.api_key = CONFIG.ODDS_API_KEY
         self.base_url = CONFIG.ODDS_BASE_URL
@@ -26,26 +24,21 @@ class OddsClient:
         await self.client.aclose()
 
     async def get_in_season_sports(self) -> List[str]:
-        """Retorna solo los sport_keys que están en temporada y en nuestra lista prioritaria."""
         url = f"{self.base_url}/sports"
         params = {"apiKey": self.api_key, "all": "false"}
-
         try:
             resp = await self.client.get(url, params=params)
             resp.raise_for_status()
             data = resp.json()
             self._update_quota(resp.headers)
-
             active = {s["key"] for s in data if s.get("active") and not s.get("has_outrights", False)}
             prioritized = set(CONFIG.SPORTS_PRIORITY)
             return list(active & prioritized)
-
         except Exception as e:
             logger.error(f"Error obteniendo deportes: {e}")
             return []
 
     async def get_odds_for_sport(self, sport_key: str) -> List[Dict[str, Any]]:
-        """Obtiene odds h2h en decimal para un deporte. Consume 1 request."""
         url = f"{self.base_url}/sports/{sport_key}/odds"
         params = {
             "apiKey": self.api_key,
@@ -54,7 +47,6 @@ class OddsClient:
             "oddsFormat": CONFIG.ODDS_FORMAT,
             "dateFormat": CONFIG.DATE_FORMAT,
         }
-
         try:
             resp = await self.client.get(url, params=params)
             resp.raise_for_status()
@@ -71,21 +63,17 @@ class OddsClient:
             return []
 
     async def get_all_odds(self, sport_keys: List[str]) -> Dict[str, List[Dict[str, Any]]]:
-        """Consulta odds de todos los deportes en paralelo (concurrency limitada)."""
         semaphore = asyncio.Semaphore(5)
         results = {}
-
         async def fetch(sport):
             async with semaphore:
                 odds = await self.get_odds_for_sport(sport)
                 return sport, odds
-
         tasks = [fetch(sk) for sk in sport_keys]
         for coro in asyncio.as_completed(tasks):
             sport, odds = await coro
             if odds:
                 results[sport] = odds
-
         return results
 
     def _update_quota(self, headers: httpx.Headers):
@@ -96,7 +84,6 @@ class OddsClient:
             pass
 
     def is_today(self, commence_time: str) -> bool:
-        """Verifica si el partido es hoy en hora Colombia."""
         try:
             dt = datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
             dt_col = dt.astimezone(COLOMBIA_TZ)

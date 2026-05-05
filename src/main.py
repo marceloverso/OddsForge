@@ -20,10 +20,10 @@ COLOMBIA_TZ = timezone(timedelta(hours=-5))
 
 
 async def main():
-    logger.info("🚀 Iniciando Parlay Bot...")
+    logger.info("🚀 === PARLAY BOT — MODO MAÑANA ===")
 
     if not CONFIG.ODDS_API_KEY:
-        logger.error("❌ Falta ODDS_API_KEY en variables de entorno.")
+        logger.error("❌ Falta ODDS_API_KEY.")
         sys.exit(1)
 
     client = OddsClient()
@@ -34,15 +34,14 @@ async def main():
     try:
         logger.info("Consultando deportes en temporada...")
         sports = await client.get_in_season_sports()
-        logger.info(f"Deportes activos encontrados: {len(sports)}")
-
+        logger.info(f"Deportes activos: {len(sports)}")
         if not sports:
             await notifier.send_parlay(selector.build_parlay([]))
             return
 
         logger.info("Descargando odds...")
         all_odds = await client.get_all_odds(sports)
-        logger.info(f"Deportes con odds disponibles: {len(all_odds)}")
+        logger.info(f"Deportes con odds: {len(all_odds)}")
 
         today_odds = {}
         for sport, events in all_odds.items():
@@ -54,42 +53,32 @@ async def main():
         candidates = selector.extract_picks(today_odds)
         parlay = selector.build_parlay(candidates)
 
-        # Enviar a Telegram
-        logger.info(f"Enviando parlay con {len(parlay.picks)} picks (cuota: {parlay.total_odd})...")
+        # Telegram
+        logger.info(f"Enviando parlay ({len(parlay.picks)} picks, cuota {parlay.total_odd})...")
         await notifier.send_parlay(parlay)
 
-        # Escribir en Google Sheets — LOGS DETALLADOS
+        # Google Sheets
         date_str = datetime.now(COLOMBIA_TZ).strftime("%d/%m/%Y")
-        logger.info(f"Fecha a escribir en Sheet: {date_str}")
-
-        if not parlay.picks:
-            logger.warning("No hay picks para escribir en el Sheet.")
-        else:
+        logger.info(f"Fecha para Sheet: {date_str}")
+        if parlay.picks:
             if sheets.sheet:
-                logger.info(f"Sheet conectado. ID: {CONFIG.GOOGLE_SHEETS_ID}")
                 picks_data = [
                     {
-                        "sport_key": p.sport_key,
-                        "sport_title": p.sport_title,
-                        "home_team": p.home_team,
-                        "away_team": p.away_team,
-                        "selection": p.selection,
-                        "odd": p.odd,
+                        "sport_key": p.sport_key, "sport_title": p.sport_title,
+                        "home_team": p.home_team, "away_team": p.away_team,
+                        "selection": p.selection, "odd": p.odd,
                         "commence_time": p.commence_time,
                     }
                     for p in parlay.picks
                 ]
                 sheets.write_picks(date_str, picks_data, parlay.total_odd)
-                logger.info("✅ Llamada a write_picks() completada.")
+                logger.info("✅ Proceso de escritura al Sheet finalizado.")
             else:
-                logger.error("❌ sheets.sheet es None. No se pudo conectar al Sheet.")
-                logger.error("   Revisa: GOOGLE_SHEETS_ID, GOOGLE_CREDENTIALS_JSON, nombre de pestaña 'Parlays', y permisos de Editor.")
+                logger.error("❌ sheets.sheet es None. Revisa credenciales y nombre de pestaña.")
+        else:
+            logger.warning("No hay picks para escribir.")
 
-        logger.info(
-            f"✅ Listo. Requests usados este mes: {client.requests_used}, "
-            f"restantes: {client.requests_remaining}"
-        )
-
+        logger.info(f"✅ DONE. Requests Odds API: {client.requests_used}/{client.requests_remaining}")
     finally:
         await client.close()
         await notifier.close()
